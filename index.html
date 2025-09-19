@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kiek laiko iki autobuso</title>
+  <style>
+    :root { --bg:#0b1020; --card:#111836; --text:#eef2ff; --muted:#a7b0d8; --accent:#7aa2ff; --good:#18b26b; --bad:#ff5a7a; }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Helvetica,Arial; background:var(--bg); color:var(--text);}
+    .wrap{max-width:820px;margin:0 auto;padding:24px}
+    .card{background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02)); border:1px solid rgba(255,255,255,.06); border-radius:18px; padding:20px; box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    h1{font-size:28px;margin:0 0 8px}
+    p.sub{margin:0 0 16px;color:var(--muted)}
+    .row{display:flex; gap:12px; flex-wrap:wrap; align-items:end}
+    label{display:block;font-size:14px;color:var(--muted);margin-bottom:6px}
+    select,input,button,textarea{font:inherit}
+    select,input,textarea{background:var(--card); color:var(--text); border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:10px 12px}
+    button{background:var(--accent); color:#07122a; border:none; padding:10px 14px; border-radius:12px; cursor:pointer; font-weight:700}
+    button.secondary{background:transparent; color:var(--muted); border:1px dashed rgba(255,255,255,.18)}
+    .grid{display:grid; grid-template-columns:1fr; gap:12px}
+    .next{font-size:42px; font-weight:800; letter-spacing:.5px}
+    .pill{display:inline-block; padding:4px 10px; border-radius:999px; background:rgba(122,162,255,.15); color:var(--accent); font-weight:700;}
+    .list{display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:8px; margin-top:8px}
+    .tile{background:var(--card); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:10px}
+    .muted{color:var(--muted)}
+    .ok{color:var(--good)} .late{color:var(--bad)}
+    details{margin-top:10px}
+    pre{white-space:pre-wrap; word-break:break-word; background:#0f1329; border:1px solid rgba(255,255,255,.07); padding:12px; border-radius:12px}
+    .foot{margin-top:16px; color:var(--muted); font-size:13px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Kiek laiko iki autobuso</h1>
+      <p class="sub">Vieno failo programėlė. Laikas skaičiuojamas vietiniu laiku. Tvarkaraštį galite redaguoti žemiau.</p>
+      <div class="row">
+        <div>
+          <label for="stop">Stotelė</label>
+          <select id="stop"></select>
+        </div>
+        <div>
+          <label for="service">Diena</label>
+          <select id="service">
+            <option value="weekday">Darbo diena</option>
+            <option value="weekend">Savaitgalis ir šventinė diena</option>
+          </select>
+        </div>
+        <div>
+          <button id="nowBtn" title="Atnaujinti dabar">Atnaujinti</button>
+        </div>
+        <div style="margin-left:auto">
+          <span class="pill" id="localTime"></span>
+        </div>
+      </div>
+
+      <div class="grid" style="margin-top:16px">
+        <div class="tile">
+          <div class="muted">Artimiausias išvyksta po</div>
+          <div class="next" id="countdown1">—</div>
+          <div class="muted">Išvykimo laikas: <span id="nextTime1">—:—</span></div>
+        </div>
+        <div class="tile">
+          <div class="muted">Kitas išvyksta po</div>
+          <div class="next" id="countdown2">—</div>
+          <div class="muted">Išvykimo laikas: <span id="nextTime2">—:—</span></div>
+        </div>
+        <div class="tile">
+          <div class="muted">Toliau pagal tvarkaraštį</div>
+          <div class="list" id="upcoming"></div>
+        </div>
+      </div>
+
+      <details>
+        <summary>Redaguoti tvarkaraštį (JSON)</summary>
+        <p class="muted">Formatas: sąrašas laikų "HH:MM" kiekvienai stotelei ir dienos tipui. 24 val. formatas.</p>
+        <textarea id="jsonArea" rows="12" style="width:100%"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button id="applyJson">Taikyti</button>
+          <button class="secondary" id="resetJson">Atkurti pavyzdį</button>
+        </div>
+      </details>
+
+      <div class="foot">Tinka GitHub Pages / Netlify. Serverio nereikia. ✨</div>
+    </div>
+  </div>
+
+<script>
+// === 1) TVARKARAŠČIO DUOMENYS (pagal Jūsų nuotraukas) ========================
+const DEMO_SCHEDULE = {
+  timezone: "Europe/Vilnius",
+  stops: {
+    // Kiškių st. — Autobusas 39
+    "Kiškių st. — 39": {
+      weekday: [
+        "05:47","06:21","06:49","07:31","07:59","08:41","09:09","09:53","10:49","11:31","12:00","12:30","13:02","13:33","14:05","14:36","15:08","15:39","16:10","16:41","17:17","17:53","18:30","19:02","20:06","20:38","21:06","21:39","22:07","22:40","23:09","23:41","00:11"
+      ],
+      weekend: [
+        "06:49","08:00","09:09","10:14","10:46","11:22","11:55","12:31","13:07","14:10","14:30","15:16","15:49","16:23","16:58","17:33","18:09","18:44","19:17","20:53","21:53","22:53","23:53"
+      ]
+    },
+
+    // Kiškių st. — Autobusas 17
+    "Kiškių st. — 17": {
+      weekday: [
+        "05:24","05:58","06:27","06:59","07:35","08:11","08:41","09:27","10:21","11:05","11:39","12:10","12:45","13:15","13:50","14:20","14:55","15:25","15:55","16:29","16:59","17:30","18:05","18:35","19:41","20:15","20:44","21:14","21:44","22:13","22:43","23:13","23:43","00:12"
+      ],
+      weekend: [
+        "06:12","07:16","08:15","09:14","10:16","10:50","11:20","11:54","12:24","13:00","13:28","14:05","15:05","15:25","16:05","16:29","17:04","17:29","18:04","18:30","19:03","20:05","21:03","22:03","23:03","00:03"
+      ]
+    }
+  }
+};
+
+// === 2) LAIKO PAGALBINĖS FUNKCIJOS ===========================================
+const pad = n => String(n).padStart(2,'0');
+function parseHM(hm){ const [h,m] = hm.split(":" ).map(Number); return {h,m}; }
+function toMinutes(h,m){ return h*60+m; }
+function fromMinutes(min){ const h=Math.floor(min/60)%24, m=min%60; return `${pad(h)}:${pad(m)}`; }
+function getLocalNow(){ return new Date(); }
+function getServiceByDate(date){
+  const d = date.getDay(); // 0=Sekmadienis, 6=Šeštadienis
+  if(d===0||d===6) return 'weekend';
+  return 'weekday';
+}
+
+// === 3) LOGIKA ================================================================
+let schedule = JSON.parse(localStorage.getItem('busScheduleJSON')||'null') || DEMO_SCHEDULE;
+
+const els = {
+  stop: document.getElementById('stop'),
+  service: document.getElementById('service'),
+  countdown1: document.getElementById('countdown1'),
+  countdown2: document.getElementById('countdown2'),
+  nextTime1: document.getElementById('nextTime1'),
+  nextTime2: document.getElementById('nextTime2'),
+  upcoming: document.getElementById('upcoming'),
+  localTime: document.getElementById('localTime'),
+  jsonArea: document.getElementById('jsonArea'),
+  applyJson: document.getElementById('applyJson'),
+  resetJson: document.getElementById('resetJson'),
+  nowBtn: document.getElementById('nowBtn'),
+};
+
+function populateStops(){
+  els.stop.innerHTML = '';
+  Object.keys(schedule.stops).forEach((name,i)=>{
+    const opt = document.createElement('option');
+    opt.value = name; opt.textContent = name; if(i===0) opt.selected=true; els.stop.appendChild(opt);
+  });
+}
+
+function refreshLocalTime(){
+  const now = getLocalNow();
+  const fmt = new Intl.DateTimeFormat('lt-LT', {dateStyle:'medium', timeStyle:'medium', timeZone: schedule.timezone || undefined});
+  els.localTime.textContent = fmt.format(now);
+}
+
+function nextBuses(times){
+  const now = getLocalNow();
+  const nowMin = now.getHours()*60 + now.getMinutes();
+  const dayList = times.map(parseHM).map(({h,m})=>toMinutes(h,m));
+
+  let upcoming = [];
+  for(const t of dayList){ if(t >= nowMin){ upcoming.push(t); }
+  }
+  if(upcoming.length===0 && dayList.length>0){
+    upcoming = dayList.map(x=>x+24*60); // rytojus
+  }
+  return upcoming.slice(0,8);
+}
+
+function render(){
+  const stopName = els.stop.value;
+  const service = els.service.value; // 'weekday' | 'weekend'
+  const times = schedule.stops[stopName]?.[service] || [];
+  const up = nextBuses(times);
+  const now = getLocalNow();
+  const nowMin = now.getHours()*60 + now.getMinutes();
+
+  function setNext(idx, cdEl, timeEl){
+    if(up.length>idx){
+      const t = up[idx];
+      const diff = (t - nowMin + 24*60) % (24*60);
+      const hh = Math.floor(diff/60), mm = diff%60;
+      cdEl.textContent = `${hh?hh+' val. ':''}${pad(mm)} min`;
+      cdEl.className = 'next ' + (diff<=5 ? 'late' : 'ok');
+      timeEl.textContent = fromMinutes(t % (24*60));
+    }else{
+      cdEl.textContent = '—';
+      timeEl.textContent = '—:—';
+    }
+  }
+
+  setNext(0, els.countdown1, els.nextTime1);
+  setNext(1, els.countdown2, els.nextTime2);
+
+  // Toliau sąrašas
+  els.upcoming.innerHTML = '';
+  if(up.length===0){
+    els.upcoming.innerHTML = '<span class="muted">Nėra duomenų</span>';
+    return;
+  }
+  up.slice(2).forEach((t)=>{
+    const div = document.createElement('div');
+    div.className = 'tile';
+    const when = fromMinutes(t % (24*60));
+    const d = ( (t - nowMin) + 24*60) % (24*60);
+    const h = Math.floor(d/60), m = d%60;
+    div.innerHTML = `<div><strong>${when}</strong></div><div class="muted">po ${h?h+' val. ':''}${pad(m)} min</div>`;
+    els.upcoming.appendChild(div);
+  });
+}
+
+// === 4) INICIJAVIMAS =========================================================
+function init(){
+  populateStops();
+  els.service.value = getServiceByDate(new Date());
+
+  els.jsonArea.value = JSON.stringify(schedule, null, 2);
+  els.applyJson.onclick = ()=>{
+    try{
+      const obj = JSON.parse(els.jsonArea.value);
+      if(!obj || !obj.stops) throw new Error('Trūksta "stops" lauko');
+      schedule = obj;
+      localStorage.setItem('busScheduleJSON', JSON.stringify(schedule));
+      populateStops(); render(); refreshLocalTime();
+      alert('Atnaujinta');
+    }catch(e){ alert('JSON klaida: '+ e.message); }
+  };
+  els.resetJson.onclick = ()=>{
+    schedule = JSON.parse(JSON.stringify(DEMO_SCHEDULE));
+    localStorage.setItem('busScheduleJSON', JSON.stringify(schedule));
+    els.jsonArea.value = JSON.stringify(schedule, null, 2);
+    populateStops(); render(); refreshLocalTime();
+  };
+
+  els.stop.onchange = render;
+  els.service.onchange = render;
+  els.nowBtn.onclick = ()=>{ refreshLocalTime(); render(); };
+
+  refreshLocalTime();
+  render();
+  setInterval(()=>{ refreshLocalTime(); render(); }, 30*1000);
+}
+
+init();
+</script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kiek laiko iki autobuso</title>
+  <style>
+    :root { --bg:#0b1020; --card:#111836; --text:#eef2ff; --muted:#a7b0d8; --accent:#7aa2ff; --good:#18b26b; --bad:#ff5a7a; }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Helvetica,Arial; background:var(--bg); color:var(--text);}
+    .wrap{max-width:820px;margin:0 auto;padding:24px}
+    .card{background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02)); border:1px solid rgba(255,255,255,.06); border-radius:18px; padding:20px; box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    h1{font-size:28px;margin:0 0 8px}
+    p.sub{margin:0 0 16px;color:var(--muted)}
+    .row{display:flex; gap:12px; flex-wrap:wrap; align-items:end}
+    label{display:block;font-size:14px;color:var(--muted);margin-bottom:6px}
+    select,input,button,textarea{font:inherit}
+    select,input,textarea{background:var(--card); color:var(--text); border:1px solid rgba(255,255,255,.12); border-radius:12px; padding:10px 12px}
+    button{background:var(--accent); color:#07122a; border:none; padding:10px 14px; border-radius:12px; cursor:pointer; font-weight:700}
+    button.secondary{background:transparent; color:var(--muted); border:1px dashed rgba(255,255,255,.18)}
+    .grid{display:grid; grid-template-columns:1fr; gap:12px}
+    .next{font-size:42px; font-weight:800; letter-spacing:.5px}
+    .pill{display:inline-block; padding:4px 10px; border-radius:999px; background:rgba(122,162,255,.15); color:var(--accent); font-weight:700;}
+    .list{display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:8px; margin-top:8px}
+    .tile{background:var(--card); border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:10px}
+    .muted{color:var(--muted)}
+    .ok{color:var(--good)} .late{color:var(--bad)}
+    details{margin-top:10px}
+    pre{white-space:pre-wrap; word-break:break-word; background:#0f1329; border:1px solid rgba(255,255,255,.07); padding:12px; border-radius:12px}
+    .foot{margin-top:16px; color:var(--muted); font-size:13px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Kiek laiko iki autobuso</h1>
+      <p class="sub">Vieno failo programėlė. Laikas skaičiuojamas vietiniu laiku. Tvarkaraštį galite redaguoti žemiau.</p>
+      <div class="row">
+        <div>
+          <label for="stop">Stotelė</label>
+          <select id="stop"></select>
+        </div>
+        <div>
+          <label for="service">Diena</label>
+          <select id="service">
+            <option value="weekday">Darbo diena</option>
+            <option value="weekend">Savaitgalis ir šventinė diena</option>
+          </select>
+        </div>
+        <div>
+          <button id="nowBtn" title="Atnaujinti dabar">Atnaujinti</button>
+        </div>
+        <div style="margin-left:auto">
+          <span class="pill" id="localTime"></span>
+        </div>
+      </div>
+
+      <div class="grid" style="margin-top:16px">
+        <div class="tile">
+          <div class="muted">Artimiausias išvyksta po</div>
+          <div class="next" id="countdown1">—</div>
+          <div class="muted">Išvykimo laikas: <span id="nextTime1">—:—</span></div>
+        </div>
+        <div class="tile">
+          <div class="muted">Kitas išvyksta po</div>
+          <div class="next" id="countdown2">—</div>
+          <div class="muted">Išvykimo laikas: <span id="nextTime2">—:—</span></div>
+        </div>
+        <div class="tile">
+          <div class="muted">Toliau pagal tvarkaraštį</div>
+          <div class="list" id="upcoming"></div>
+        </div>
+      </div>
+
+      <details>
+        <summary>Redaguoti tvarkaraštį (JSON)</summary>
+        <p class="muted">Formatas: sąrašas laikų "HH:MM" kiekvienai stotelei ir dienos tipui. 24 val. formatas.</p>
+        <textarea id="jsonArea" rows="12" style="width:100%"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button id="applyJson">Taikyti</button>
+          <button class="secondary" id="resetJson">Atkurti pavyzdį</button>
+        </div>
+      </details>
+
+      <div class="foot">Tinka GitHub Pages / Netlify. Serverio nereikia. ✨</div>
+    </div>
+  </div>
+
+<script>
+// === 1) TVARKARAŠČIO DUOMENYS (pagal Jūsų nuotraukas) ========================
+const DEMO_SCHEDULE = {
+  timezone: "Europe/Vilnius",
+  stops: {
+    // Kiškių st. — Autobusas 39
+    "Kiškių st. — 39": {
+      weekday: [
+        "05:47","06:21","06:49","07:31","07:59","08:41","09:09","09:53","10:49","11:31","12:00","12:30","13:02","13:33","14:05","14:36","15:08","15:39","16:10","16:41","17:17","17:53","18:30","19:02","20:06","20:38","21:06","21:39","22:07","22:40","23:09","23:41","00:11"
+      ],
+      weekend: [
+        "06:49","08:00","09:09","10:14","10:46","11:22","11:55","12:31","13:07","14:10","14:30","15:16","15:49","16:23","16:58","17:33","18:09","18:44","19:17","20:53","21:53","22:53","23:53"
+      ]
+    },
+
+    // Kiškių st. — Autobusas 17
+    "Kiškių st. — 17": {
+      weekday: [
+        "05:24","05:58","06:27","06:59","07:35","08:11","08:41","09:27","10:21","11:05","11:39","12:10","12:45","13:15","13:50","14:20","14:55","15:25","15:55","16:29","16:59","17:30","18:05","18:35","19:41","20:15","20:44","21:14","21:44","22:13","22:43","23:13","23:43","00:12"
+      ],
+      weekend: [
+        "06:12","07:16","08:15","09:14","10:16","10:50","11:20","11:54","12:24","13:00","13:28","14:05","15:05","15:25","16:05","16:29","17:04","17:29","18:04","18:30","19:03","20:05","21:03","22:03","23:03","00:03"
+      ]
+    }
+  }
+};
+
+// === 2) LAIKO PAGALBINĖS FUNKCIJOS ===========================================
+const pad = n => String(n).padStart(2,'0');
+function parseHM(hm){ const [h,m] = hm.split(":" ).map(Number); return {h,m}; }
+function toMinutes(h,m){ return h*60+m; }
+function fromMinutes(min){ const h=Math.floor(min/60)%24, m=min%60; return `${pad(h)}:${pad(m)}`; }
+function getLocalNow(){ return new Date(); }
+function getServiceByDate(date){
+  const d = date.getDay(); // 0=Sekmadienis, 6=Šeštadienis
+  if(d===0||d===6) return 'weekend';
+  return 'weekday';
+}
+
+// === 3) LOGIKA ================================================================
+let schedule = JSON.parse(localStorage.getItem('busScheduleJSON')||'null') || DEMO_SCHEDULE;
+
+const els = {
+  stop: document.getElementById('stop'),
+  service: document.getElementById('service'),
+  countdown1: document.getElementById('countdown1'),
+  countdown2: document.getElementById('countdown2'),
+  nextTime1: document.getElementById('nextTime1'),
+  nextTime2: document.getElementById('nextTime2'),
+  upcoming: document.getElementById('upcoming'),
+  localTime: document.getElementById('localTime'),
+  jsonArea: document.getElementById('jsonArea'),
+  applyJson: document.getElementById('applyJson'),
+  resetJson: document.getElementById('resetJson'),
+  nowBtn: document.getElementById('nowBtn'),
+};
+
+function populateStops(){
+  els.stop.innerHTML = '';
+  Object.keys(schedule.stops).forEach((name,i)=>{
+    const opt = document.createElement('option');
+    opt.value = name; opt.textContent = name; if(i===0) opt.selected=true; els.stop.appendChild(opt);
+  });
+}
+
+function refreshLocalTime(){
+  const now = getLocalNow();
+  const fmt = new Intl.DateTimeFormat('lt-LT', {dateStyle:'medium', timeStyle:'medium', timeZone: schedule.timezone || undefined});
+  els.localTime.textContent = fmt.format(now);
+}
+
+function nextBuses(times){
+  const now = getLocalNow();
+  const nowMin = now.getHours()*60 + now.getMinutes();
+  const dayList = times.map(parseHM).map(({h,m})=>toMinutes(h,m));
+
+  let upcoming = [];
+  for(const t of dayList){ if(t >= nowMin){ upcoming.push(t); }
+  }
+  if(upcoming.length===0 && dayList.length>0){
+    upcoming = dayList.map(x=>x+24*60); // rytojus
+  }
+  return upcoming.slice(0,8);
+}
+
+function render(){
+  const stopName = els.stop.value;
+  const service = els.service.value; // 'weekday' | 'weekend'
+  const times = schedule.stops[stopName]?.[service] || [];
+  const up = nextBuses(times);
+  const now = getLocalNow();
+  const nowMin = now.getHours()*60 + now.getMinutes();
+
+  function setNext(idx, cdEl, timeEl){
+    if(up.length>idx){
+      const t = up[idx];
+      const diff = (t - nowMin + 24*60) % (24*60);
+      const hh = Math.floor(diff/60), mm = diff%60;
+      cdEl.textContent = `${hh?hh+' val. ':''}${pad(mm)} min`;
+      cdEl.className = 'next ' + (diff<=5 ? 'late' : 'ok');
+      timeEl.textContent = fromMinutes(t % (24*60));
+    }else{
+      cdEl.textContent = '—';
+      timeEl.textContent = '—:—';
+    }
+  }
+
+  setNext(0, els.countdown1, els.nextTime1);
+  setNext(1, els.countdown2, els.nextTime2);
+
+  // Toliau sąrašas
+  els.upcoming.innerHTML = '';
+  if(up.length===0){
+    els.upcoming.innerHTML = '<span class="muted">Nėra duomenų</span>';
+    return;
+  }
+  up.slice(2).forEach((t)=>{
+    const div = document.createElement('div');
+    div.className = 'tile';
+    const when = fromMinutes(t % (24*60));
+    const d = ( (t - nowMin) + 24*60) % (24*60);
+    const h = Math.floor(d/60), m = d%60;
+    div.innerHTML = `<div><strong>${when}</strong></div><div class="muted">po ${h?h+' val. ':''}${pad(m)} min</div>`;
+    els.upcoming.appendChild(div);
+  });
+}
+
+// === 4) INICIJAVIMAS =========================================================
+function init(){
+  populateStops();
+  els.service.value = getServiceByDate(new Date());
+
+  els.jsonArea.value = JSON.stringify(schedule, null, 2);
+  els.applyJson.onclick = ()=>{
+    try{
+      const obj = JSON.parse(els.jsonArea.value);
+      if(!obj || !obj.stops) throw new Error('Trūksta "stops" lauko');
+      schedule = obj;
+      localStorage.setItem('busScheduleJSON', JSON.stringify(schedule));
+      populateStops(); render(); refreshLocalTime();
+      alert('Atnaujinta');
+    }catch(e){ alert('JSON klaida: '+ e.message); }
+  };
+  els.resetJson.onclick = ()=>{
+    schedule = JSON.parse(JSON.stringify(DEMO_SCHEDULE));
+    localStorage.setItem('busScheduleJSON', JSON.stringify(schedule));
+    els.jsonArea.value = JSON.stringify(schedule, null, 2);
+    populateStops(); render(); refreshLocalTime();
+  };
+
+  els.stop.onchange = render;
+  els.service.onchange = render;
+  els.nowBtn.onclick = ()=>{ refreshLocalTime(); render(); };
+
+  refreshLocalTime();
+  render();
+  setInterval(()=>{ refreshLocalTime(); render(); }, 30*1000);
+}
+
+init();
+</script>
+</body>
+</html>
